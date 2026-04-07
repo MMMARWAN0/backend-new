@@ -8,8 +8,8 @@ from passlib.context import CryptContext
 from app.database import get_db
 from app.models.user import User
 import bcrypt
-from fastapi.security import OAuth2PasswordRequestForm
 
+# الإعدادات
 SECRET_KEY = "marwan_secret_key_for_missing_person_app" 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 
@@ -17,16 +17,14 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 router = APIRouter(prefix="/users", tags=["Users Authentication"])
 
-
+# --- دوال التشفير ---
 def get_password_hash(password: str):
-    
     pwd_bytes = password.encode('utf-8')
     salt = bcrypt.gensalt()
     hashed_password = bcrypt.hashpw(pwd_bytes, salt)
     return hashed_password.decode('utf-8') 
 
 def verify_password(plain_password: str, hashed_password: str):
-    
     password_byte = plain_password.encode('utf-8')
     hashed_byte = hashed_password.encode('utf-8')
     return bcrypt.checkpw(password_byte, hashed_byte)
@@ -37,7 +35,7 @@ def create_access_token(data: dict):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-
+# --- الـ Schemas ---
 class UserRegisterRequest(BaseModel):
     name: str
     email: str
@@ -46,11 +44,11 @@ class UserRegisterRequest(BaseModel):
     national_id: str
     age: int
 
-class UserLoginRequest(BaseModel):
+class UserLoginRequest(BaseModel): # الكلاس ده اللي هيخليها JSON
     national_id: str
     password: str
 
-
+# --- الـ API Endpoints ---
 
 @router.post("/register")
 def register_user(user_data: UserRegisterRequest, db: Session = Depends(get_db)):
@@ -64,7 +62,7 @@ def register_user(user_data: UserRegisterRequest, db: Session = Depends(get_db))
     new_user = User(
         name=user_data.name,
         email=user_data.email,
-        password_hash=get_password_hash(user_data.password), # تشفير الباسورد قبل الحفظ
+        password_hash=get_password_hash(user_data.password),
         phone=user_data.phone,
         national_id=user_data.national_id,
         age=user_data.age
@@ -75,10 +73,10 @@ def register_user(user_data: UserRegisterRequest, db: Session = Depends(get_db))
     db.refresh(new_user)
     return {"message": "User registered successfully", "user_id": new_user.user_id}
 
-@router.post("/login")
-def login_user(login_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-  
-    user = db.query(User).filter(User.national_id == login_data.username).first()
+@router.post("/login") # التعديل الجوهري هنا
+def login_user(login_data: UserLoginRequest, db: Session = Depends(get_db)):
+    # بنبحث بالـ national_id اللي جاي في الـ JSON
+    user = db.query(User).filter(User.national_id == login_data.national_id).first()
     
     if not user or not verify_password(login_data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="بيانات الدخول غير صحيحة")
@@ -94,7 +92,6 @@ def login_user(login_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
 def get_all_users(db: Session = Depends(get_db)):
     try:
         users = db.query(User).all()
-        
         return [
             {
                 "user_id": u.user_id,
@@ -108,7 +105,6 @@ def get_all_users(db: Session = Depends(get_db)):
                 "id_front_url": u.id_front_url,
                 "id_back_url": u.id_back_url,
                 "selfie_url": u.selfie_url,
-               
             } for u in users
         ]
     except Exception as e:
