@@ -3,15 +3,11 @@ from fastapi.staticfiles import StaticFiles
 from app.database import Base, engine
 import os
 from . import models
-
-
 from app.models.user import User
 from app.models.missing_person import MissingPerson
 from app.models.camera import Camera
 from app.models.detection import Detection
 from app.models.sos_request import SoSRequest
-
-
 from app.routers import user_router, missing_person_router
 from app.routers import user_router, missing_person_router, detection_router
 from .routers import sos_router
