@@ -10,6 +10,9 @@ from app.models.user import User
 import bcrypt
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import Optional # Add this to your imports
+from app.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.dependencies import get_current_user
+
 
 class UserUpdateRequest(BaseModel):
     name: Optional[str] = None
@@ -28,9 +31,7 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-from app.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
-from app.dependencies import get_current_user  
+ 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 router = APIRouter(prefix="/users", tags=["Users Authentication"])
 
@@ -60,8 +61,6 @@ class UserRegisterRequest(BaseModel):
     phone: str
     national_id: str
     age: int
-
-
 
 @router.post("/register")
 def register_user(user_data: UserRegisterRequest, db: Session = Depends(get_db)):
@@ -130,9 +129,9 @@ def logout(current_user_id: str = Depends(get_current_user)):
 @router.get("/me", response_model=UserResponse)
 def get_my_profile(
     db: Session = Depends(get_db), 
-    current_user_id: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
-    user = db.query(User).filter(User.user_id == int(current_user_id)).first()
+    user = db.query(User).filter(User.user_id == current_user["user_id"]).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
@@ -141,15 +140,26 @@ def get_my_profile(
 def update_user_profile(
     update_data: UserUpdateRequest, 
     db: Session = Depends(get_db), 
-    current_user_id: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user) 
 ):
-    user = db.query(User).filter(User.user_id == int(current_user_id)).first()
+  
+    user_id_from_token = current_user["user_id"]
     
+    
+    user = db.query(User).filter(User.user_id == user_id_from_token).first()
+    
+   
+    if not user:
+        raise HTTPException(
+            status_code=404, 
+            detail="المستخدم غير موجود في قاعدة البيانات، ربما تم حذفه أو الداتابيز تغيرت"
+        )
+    
+    # 4. ابدأ التحديث وأنت مطمن
     if update_data.name: user.name = update_data.name
     if update_data.phone: user.phone = update_data.phone
     if update_data.age: user.age = update_data.age
     if update_data.email: user.email = update_data.email
-
 
     db.commit()
     db.refresh(user)
@@ -158,12 +168,17 @@ def update_user_profile(
 @router.delete("/delete")
 def delete_my_account(
     db: Session = Depends(get_db), 
-    current_user_id: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user) 
 ):
-    user = db.query(User).filter(User.user_id == int(current_user_id)).first()
+
+    user_id_from_token = current_user["user_id"]
     
+    user = db.query(User).filter(User.user_id == user_id_from_token).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
     db.delete(user)
     db.commit()
     
     return {"message": "Your account has been permanently deleted."}
-
