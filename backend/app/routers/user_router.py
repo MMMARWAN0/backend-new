@@ -29,6 +29,10 @@ class UserResponse(BaseModel):
     age: Optional[int]
     role: str
 
+class UserLoginRequest(BaseModel): 
+    national_id: str
+    password: str
+
     class Config:
         from_attributes = True
  
@@ -86,12 +90,13 @@ def register_user(user_data: UserRegisterRequest, db: Session = Depends(get_db))
     return {"message": "User registered successfully", "user_id": new_user.user_id}
 
 @router.post("/login") 
-def login_user(login_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-   
-    user = db.query(User).filter(User.national_id == login_data.username).first()
+def login_user(login_data: UserLoginRequest, db: Session = Depends(get_db)):
+    
+    user = db.query(User).filter(User.national_id == login_data.national_id).first()
     
     if not user or not verify_password(login_data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="بيانات الدخول غير صحيحة")
+    
     
     access_token = create_access_token(data={"sub": str(user.user_id), "name": user.name})
     
@@ -155,7 +160,7 @@ def update_user_profile(
             detail="المستخدم غير موجود في قاعدة البيانات، ربما تم حذفه أو الداتابيز تغيرت"
         )
     
-    # 4. ابدأ التحديث وأنت مطمن
+
     if update_data.name: user.name = update_data.name
     if update_data.phone: user.phone = update_data.phone
     if update_data.age: user.age = update_data.age
