@@ -9,7 +9,25 @@ from app.database import get_db
 from app.models.user import User
 import bcrypt
 from fastapi.security import OAuth2PasswordRequestForm
+from typing import Optional # Add this to your imports
 
+class UserUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    age: Optional[int] = None
+    email: Optional[str] = None
+
+class UserResponse(BaseModel):
+    user_id: int
+    name: str
+    email: str
+    phone: Optional[str]
+    national_id: Optional[str]
+    age: Optional[int]
+    role: str
+
+    class Config:
+        from_attributes = True
 
 from app.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 from app.dependencies import get_current_user  
@@ -108,3 +126,44 @@ def get_all_users(db: Session = Depends(get_db)):
 @router.post("/logout")
 def logout(current_user_id: str = Depends(get_current_user)):
     return {"message": "تم تسجيل الخروج بنجاح."}
+
+@router.get("/me", response_model=UserResponse)
+def get_my_profile(
+    db: Session = Depends(get_db), 
+    current_user_id: str = Depends(get_current_user)
+):
+    user = db.query(User).filter(User.user_id == int(current_user_id)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+@router.put("/update", response_model=UserResponse)
+def update_user_profile(
+    update_data: UserUpdateRequest, 
+    db: Session = Depends(get_db), 
+    current_user_id: str = Depends(get_current_user)
+):
+    user = db.query(User).filter(User.user_id == int(current_user_id)).first()
+    
+    if update_data.name: user.name = update_data.name
+    if update_data.phone: user.phone = update_data.phone
+    if update_data.age: user.age = update_data.age
+    if update_data.email: user.email = update_data.email
+
+
+    db.commit()
+    db.refresh(user)
+    return user
+
+@router.delete("/delete")
+def delete_my_account(
+    db: Session = Depends(get_db), 
+    current_user_id: str = Depends(get_current_user)
+):
+    user = db.query(User).filter(User.user_id == int(current_user_id)).first()
+    
+    db.delete(user)
+    db.commit()
+    
+    return {"message": "Your account has been permanently deleted."}
+
