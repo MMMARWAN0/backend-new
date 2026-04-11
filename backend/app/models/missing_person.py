@@ -9,7 +9,7 @@ class MissingPerson(Base):
     name = Column(String(100), nullable=True)
     age = Column(Integer, nullable=True)
     gender = Column(String(20))
-    location = Column(String(255))
+    location = Column(String(255)) 
     medical_notes = Column(Text, nullable=True)
     last_seen = Column(String(100), nullable=True)
     image_url = Column(String(255), nullable=True)

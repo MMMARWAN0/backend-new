@@ -2,14 +2,11 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from app.database import Base, engine
 import os
-
 from app.models.user import User
 from app.models.missing_person import MissingPerson
 from app.models.camera import Camera
 from app.models.detection import Detection
 from app.models.sos_request import SoSRequest
-
-
 from app.routers import user_router, missing_person_router, detection_router, sos_router
 
 Base.metadata.create_all(bind=engine)
