@@ -8,7 +8,6 @@ from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/sos", tags=["SOS Emergency"])
 
-
 class SOSRequestCreate(BaseModel):
     user_id: int  
     location: str
@@ -19,51 +18,40 @@ class SOSRequestResponse(BaseModel):
     location: str
     requested_at: datetime
     status_sos: str 
-
     class Config:
         from_attributes = True
-
-
 
 @router.post("/send", response_model=SOSRequestResponse)
 async def send_sos_signal(
     request: SOSRequestCreate, 
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user) 
+    current_user: dict = Depends(get_current_user)
 ):
-    
-    user_id_from_token = current_user["user_id"]
 
-
-    if user_id_from_token != request.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="غير مسموح لك بإرسال استغاثة بهوية شخص آخر!"
-        )
+    if current_user["user_id"] != request.user_id:
+        raise HTTPException(status_code=403, detail="لا يمكنك إرسال استغاثة بهوية شخص آخر")
 
     new_sos = models.sos_request.SoSRequest(
         user_id=request.user_id, 
         location=request.location,
         status_sos="Open"
     )
+    db.add(new_sos)
+    db.commit()
+    db.refresh(new_sos)
+    return new_sos
 
-    try:
-        db.add(new_sos)
-        db.commit()
-        db.refresh(new_sos)
-        
-        print(f"🚨 [SOS RECEIVED] Authorized User {request.user_id} ({current_user['name']}) is in DANGER!")
-        return new_sos
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database Error: {str(e)}")
 
-@router.get("/my-alerts", response_model=list[SOSRequestResponse])
+@router.get("/my-alerts/{user_id}", response_model=list[SOSRequestResponse])
 def get_my_sos_history(
+    user_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user) 
+    current_user: dict = Depends(get_current_user)
 ):
     
+    if user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="غير مسموح لك بمشاهدة تاريخ استغاثات مستخدم آخر")
+
     return db.query(models.sos_request.SoSRequest).filter(
-        models.sos_request.SoSRequest.user_id == current_user["user_id"]
+        models.sos_request.SoSRequest.user_id == user_id
     ).all()

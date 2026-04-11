@@ -8,10 +8,11 @@ from passlib.context import CryptContext
 from app.database import get_db
 from app.models.user import User
 import bcrypt
-from fastapi.security import OAuth2PasswordRequestForm
-from typing import Optional # Add this to your imports
 from app.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 from app.dependencies import get_current_user
+
+router = APIRouter(prefix="/users", tags=["Users Authentication"])
+
 
 
 class UserUpdateRequest(BaseModel):
@@ -29,15 +30,21 @@ class UserResponse(BaseModel):
     age: Optional[int]
     role: str
 
+    class Config:
+        from_attributes = True
+
 class UserLoginRequest(BaseModel): 
     national_id: str
     password: str
 
-    class Config:
-        from_attributes = True
- 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-router = APIRouter(prefix="/users", tags=["Users Authentication"])
+class UserRegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+    phone: str
+    national_id: str
+    age: int
+
 
 
 def get_password_hash(password: str):
@@ -58,13 +65,6 @@ def create_access_token(data: dict):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-class UserRegisterRequest(BaseModel):
-    name: str
-    email: str
-    password: str
-    phone: str
-    national_id: str
-    age: int
 
 @router.post("/register")
 def register_user(user_data: UserRegisterRequest, db: Session = Depends(get_db)):
@@ -91,12 +91,10 @@ def register_user(user_data: UserRegisterRequest, db: Session = Depends(get_db))
 
 @router.post("/login") 
 def login_user(login_data: UserLoginRequest, db: Session = Depends(get_db)):
-    
     user = db.query(User).filter(User.national_id == login_data.national_id).first()
     
     if not user or not verify_password(login_data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="بيانات الدخول غير صحيحة")
-    
     
     access_token = create_access_token(data={"sub": str(user.user_id), "name": user.name})
     
@@ -105,61 +103,39 @@ def login_user(login_data: UserLoginRequest, db: Session = Depends(get_db)):
         "token_type": "bearer"
     }
 
-@router.get("/all")
+@router.get("/all", response_model=List[UserResponse])
 def get_all_users(db: Session = Depends(get_db)):
-    try:
-        users = db.query(User).all()
-        return [
-            {
-                "user_id": u.user_id,
-                "name": u.name,
-                "email": u.email,
-                "phone": u.phone,
-                "national_id": u.national_id,
-                "age": u.age,
-                "role": u.role,
-                "is_verified": u.is_verified,
-                "id_front_url": u.id_front_url,
-                "id_back_url": u.id_back_url,
-                "selfie_url": u.selfie_url,
-            } for u in users
-        ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+   
+    return db.query(User).all()
 
-@router.post("/logout")
-def logout(current_user_id: str = Depends(get_current_user)):
-    return {"message": "تم تسجيل الخروج بنجاح."}
-
-@router.get("/me", response_model=UserResponse)
+@router.get("/me/{user_id}", response_model=UserResponse)
 def get_my_profile(
+    user_id: int, 
     db: Session = Depends(get_db), 
     current_user: dict = Depends(get_current_user)
 ):
-    user = db.query(User).filter(User.user_id == current_user["user_id"]).first()
+   
+    if user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="غير مسموح لك بالوصول لبيانات مستخدم آخر")
+
+    user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-@router.put("/update", response_model=UserResponse)
+@router.put("/update/{user_id}", response_model=UserResponse)
 def update_user_profile(
+    user_id: int,
     update_data: UserUpdateRequest, 
     db: Session = Depends(get_db), 
     current_user: dict = Depends(get_current_user) 
 ):
-  
-    user_id_from_token = current_user["user_id"]
+    if user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="غير مسموح لك بتعديل بيانات مستخدم آخر")
     
-    
-    user = db.query(User).filter(User.user_id == user_id_from_token).first()
-    
-   
+    user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=404, 
-            detail="المستخدم غير موجود في قاعدة البيانات، ربما تم حذفه أو الداتابيز تغيرت"
-        )
-    
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
     if update_data.name: user.name = update_data.name
     if update_data.phone: user.phone = update_data.phone
@@ -170,20 +146,23 @@ def update_user_profile(
     db.refresh(user)
     return user
 
-@router.delete("/delete")
+@router.delete("/delete/{user_id}")
 def delete_my_account(
+    user_id: int,
     db: Session = Depends(get_db), 
     current_user: dict = Depends(get_current_user) 
 ):
-
-    user_id_from_token = current_user["user_id"]
+    if user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="غير مسموح لك بحذف حساب مستخدم آخر")
     
-    user = db.query(User).filter(User.user_id == user_id_from_token).first()
-    
+    user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
         
     db.delete(user)
     db.commit()
-    
     return {"message": "Your account has been permanently deleted."}
+
+@router.post("/logout")
+def logout(current_user: dict = Depends(get_current_user)):
+    return {"message": f"تم تسجيل الخروج بنجاح للمستخدم: {current_user['name']}"}

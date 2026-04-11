@@ -1,86 +1,70 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.missing_person import MissingPerson
-from app.models.detection import Detection # استورد ده عشان الـ Count
-from enum import Enum 
-import shutil
-import uuid
+from app.dependencies import get_current_user
 import os
-from typing import List
-
-# استيراد حماية الـ Token
-from app.routers.sos_router import get_current_user 
+import uuid
+import shutil
 
 router = APIRouter(prefix="/missing-persons", tags=["Missing Persons"])
 
-class GenderChoices(str, Enum):
-    male = "Male"
-    female = "Female"
 
-# 1. API البلاغ (تم تعديله عشان يسحب رقم اليوزر أوتوماتيك)
-@router.post("/report")
-def report_missing_person(
+@router.post("/report/{user_id}")
+async def report_missing_person(
+    user_id: int,
     name: str = Form(...),
     age: int = Form(...),
-    gender: GenderChoices = Form(...), 
-    location: str = Form(...),
-    medical_notes: str = Form(None), 
-    last_seen: str = Form(...), 
-    image: UploadFile = File(...), 
+    description: str = Form(...),
+    last_known_location: str = Form(...),
+    image: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user_id: str = Depends(get_current_user) 
+    current_user: dict = Depends(get_current_user)
 ):
+   
+    if user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="غير مسموح لك برفع بلاغ بهوية مستخدم آخر")
+
+    # حفظ الصورة
+    upload_dir = "uploads/missing_persons"
+    if not os.path.exists(upload_dir):
+        os.makedirs(upload_dir)
+
     file_ext = image.filename.split(".")[-1]
     unique_filename = f"{uuid.uuid4()}.{file_ext}"
-    file_path = f"uploads/missing_persons/{unique_filename}"
-    
+    file_path = os.path.join(upload_dir, unique_filename)
+
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(image.file, buffer)
-        
+
     image_url = f"/static/missing_persons/{unique_filename}"
 
-    new_report = MissingPerson(
+    
+    new_person = MissingPerson(
         name=name,
         age=age,
-        gender=gender.value, 
-        location=location,
-        medical_notes=medical_notes,
-        last_seen=last_seen,
+        description=description,
+        last_known_location=last_known_location,
         image_url=image_url,
-        reported_by=int(current_user_id) 
+        reported_by=user_id 
     )
 
-    db.add(new_report)
+    db.add(new_person)
     db.commit()
-    db.refresh(new_report)
+    db.refresh(new_person)
 
-    return {"message": "Report submitted successfully", "person_id": new_report.person_id}
+    return {"message": "تم تسجيل البلاغ بنجاح", "person_id": new_person.person_id}
 
 
-@router.get("/my-reports")
+@router.get("/my-reports/{user_id}")
 def get_my_reports(
+    user_id: int,
     db: Session = Depends(get_db),
-    current_user_id: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
-    reports = db.query(MissingPerson).filter(
-        MissingPerson.reported_by == int(current_user_id)
-    ).all()
-    
-    result = []
-    for p in reports:
-        
-        det_count = db.query(Detection).filter(Detection.person_id == p.person_id).count()
-        result.append({
-            "person_id": p.person_id,
-            "name": p.name,
-            "status": p.status,
-            "image_url": p.image_url,
-            "detection_count": det_count
-        })
-    return result
+    # التحقق المزدوج
+    if user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="غير مسموح لك بمشاهدة بلاغات مستخدم آخر")
 
-
-@router.get("/all")
-def get_all_missing_persons(db: Session = Depends(get_db)):
-    return db.query(MissingPerson).order_by(MissingPerson.date_reported.desc()).all()
+    reports = db.query(MissingPerson).filter(MissingPerson.reported_by == user_id).all()
+    return reports
