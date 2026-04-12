@@ -1,10 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Header, File, UploadFile, Form
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from app.database import get_db
 from app.models.user import User
 import bcrypt
@@ -12,7 +11,6 @@ from app.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/users", tags=["Users Authentication"])
-
 
 
 class UserUpdateRequest(BaseModel):
@@ -29,6 +27,8 @@ class UserResponse(BaseModel):
     national_id: Optional[str]
     age: Optional[int]
     role: str
+    profile_image_url: Optional[str] = None  
+    
 
     class Config:
         from_attributes = True
@@ -44,7 +44,6 @@ class UserRegisterRequest(BaseModel):
     phone: str
     national_id: str
     age: int
-
 
 
 def get_password_hash(password: str):
@@ -67,27 +66,79 @@ def create_access_token(data: dict):
 
 
 @router.post("/register")
-def register_user(user_data: UserRegisterRequest, db: Session = Depends(get_db)):
+async def register_user(
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    phone: str = Form(...),
+    national_id: str = Form(...),
+    age: int = Form(...),
+    id_front: UploadFile = File(...),   
+    id_back: UploadFile = File(...),    
+    profile_image: UploadFile = File(...), 
+    db: Session = Depends(get_db)
+):
+  
     existing_user = db.query(User).filter(
-        (User.national_id == user_data.national_id) | (User.email == user_data.email)
+        (User.national_id == national_id) | (User.email == email)
     ).first()
     
     if existing_user:
-        raise HTTPException(status_code=400, detail="User already exists!")
+        raise HTTPException(status_code=400, detail="المستخدم موجود بالفعل!")
 
+   
+    base_dir = os.path.join(os.getcwd(), "backend", "uploads")
+    id_dir = os.path.join(base_dir, "national_ids")
+    profile_dir = os.path.join(base_dir, "profiles")
+    
+    os.makedirs(id_dir, exist_ok=True)
+    os.makedirs(profile_dir, exist_ok=True)
+
+  
+    front_filename = f"{national_id}_front.{id_front.filename.split('.')[-1]}"
+    with open(os.path.join(id_dir, front_filename), "wb") as buffer:
+        shutil.copyfileobj(id_front.file, buffer)
+
+    back_filename = f"{national_id}_back.{id_back.filename.split('.')[-1]}"
+    with open(os.path.join(id_dir, back_filename), "wb") as buffer:
+        shutil.copyfileobj(id_back.file, buffer)
+
+  
+    profile_ext = profile_image.filename.split(".")[-1]
+    profile_filename = f"{national_id}_profile_{uuid.uuid4().hex[:6]}.{profile_ext}"
+    with open(os.path.join(profile_dir, profile_filename), "wb") as buffer:
+        shutil.copyfileobj(profile_image.file, buffer)
+
+   
     new_user = User(
-        name=user_data.name,
-        email=user_data.email,
-        password_hash=get_password_hash(user_data.password),
-        phone=user_data.phone,
-        national_id=user_data.national_id,
-        age=user_data.age
+        name=name,
+        email=email,
+        password_hash=get_password_hash(password),
+        phone=phone,
+        national_id=national_id,
+        age=age,
+        id_front_url=f"/static/national_ids/{front_filename}",
+        id_back_url=f"/static/national_ids/{back_filename}",
+        profile_image_url=f"/static/profiles/{profile_filename}" 
     )
     
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return {"message": "User registered successfully", "user_id": new_user.user_id}
+    try:
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return {"message": "تم التسجيل بنجاح مع كافة الصور", "user_id": new_user.user_id}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database Error: {str(e)}")
+    
+    try:
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return {"message": "تم التسجيل بنجاح مع صور البطاقة", "user_id": new_user.user_id}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"خطأ في حفظ البيانات: {str(e)}")
 
 @router.post("/login") 
 def login_user(login_data: UserLoginRequest, db: Session = Depends(get_db)):
@@ -96,41 +147,39 @@ def login_user(login_data: UserLoginRequest, db: Session = Depends(get_db)):
     if not user or not verify_password(login_data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="بيانات الدخول غير صحيحة")
     
+    
     access_token = create_access_token(data={"sub": str(user.user_id), "name": user.name})
     
     return {
         "access_token": access_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "user_id": user.user_id 
     }
 
-@router.get("/all", response_model=List[UserResponse])
-def get_all_users(db: Session = Depends(get_db)):
-   
-    return db.query(User).all()
 
-@router.get("/me/{user_id}", response_model=UserResponse)
+@router.get("/me", response_model=UserResponse)
 def get_my_profile(
-    user_id: int, 
+    user_id: int = Header(...), 
     db: Session = Depends(get_db), 
     current_user: dict = Depends(get_current_user)
 ):
-   
-    if user_id != current_user["user_id"]:
-        raise HTTPException(status_code=403, detail="غير مسموح لك بالوصول لبيانات مستخدم آخر")
+    if int(user_id) != int(current_user["user_id"]):
+        raise HTTPException(status_code=403, detail="Unauthorized")
 
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return user
+        
+    return user 
 
-@router.put("/update/{user_id}", response_model=UserResponse)
+@router.put("/update", response_model=UserResponse)
 def update_user_profile(
-    user_id: int,
     update_data: UserUpdateRequest, 
+    user_id: int = Header(...), 
     db: Session = Depends(get_db), 
     current_user: dict = Depends(get_current_user) 
 ):
-    if user_id != current_user["user_id"]:
+    if int(user_id) != int(current_user["user_id"]):
         raise HTTPException(status_code=403, detail="غير مسموح لك بتعديل بيانات مستخدم آخر")
     
     user = db.query(User).filter(User.user_id == user_id).first()
@@ -146,18 +195,19 @@ def update_user_profile(
     db.refresh(user)
     return user
 
-@router.delete("/delete/{user_id}")
+
+@router.delete("/delete")
 def delete_my_account(
-    user_id: int,
+    user_id: int = Header(...), 
     db: Session = Depends(get_db), 
     current_user: dict = Depends(get_current_user) 
 ):
-    if user_id != current_user["user_id"]:
+    if int(user_id) != int(current_user["user_id"]):
         raise HTTPException(status_code=403, detail="غير مسموح لك بحذف حساب مستخدم آخر")
     
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
         
     db.delete(user)
     db.commit()

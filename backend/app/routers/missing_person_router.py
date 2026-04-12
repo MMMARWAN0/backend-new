@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Header
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.missing_person import MissingPerson
@@ -18,25 +18,24 @@ def get_all_missing_persons(db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database Error: {str(e)}")
 
-# --- 2. رفع بلاغ جديد ---
-@router.post("/report/{user_id}")
+# --- 2. رفع بلاغ جديد (ID مبعوث في الـ Header) ---
+@router.post("/report") # شيلنا الـ {user_id} من اللينك
 async def report_missing_person(
-    user_id: int,
     name: str = Form(...),
     age: int = Form(...),
     medical_notes: str = Form(None), 
     last_known_location: str = Form(...),
     image: UploadFile = File(...),
+    user_id: int = Header(...), # سحب الـ ID من الهيدر (أنس هيبعته في الـ Interceptor)
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    # التأكد من صاحب التوكن
+    # التأكد من هوية المستخدم للأمان
     if int(user_id) != int(current_user["user_id"]):
-        raise HTTPException(status_code=403, detail="ID لا يطابق صاحب التوكن")
+        raise HTTPException(status_code=403, detail="ID المستخدم لا يطابق صاحب التوكن")
 
-    # المسار اللي السيرفر هيحفظ فيه (المسار الحقيقي)
-    # استخدمنا os.getcwd() عشان نضمن إن الفولدر يتكريت في مكان المشروع بالظبط
-    base_upload_dir = os.path.join(os.getcwd(), "uploads", "missing_persons")
+    # مسار الحفظ
+    base_upload_dir = os.path.join(os.getcwd(), "backend", "uploads", "missing_persons")
     if not os.path.exists(base_upload_dir):
         os.makedirs(base_upload_dir, exist_ok=True)
 
@@ -44,12 +43,9 @@ async def report_missing_person(
     unique_filename = f"{uuid.uuid4()}.{file_ext}"
     file_path = os.path.join(base_upload_dir, unique_filename)
 
-    # حفظ الملف فعلياً
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(image.file, buffer)
 
-    # الرابط اللي هيتخزن في الداتابيز (عشان الـ AI والفرونت إند يشوفوه)
-    # خزناه بـ "static" عشان الـ StaticFiles Mount اللي عملناه في الـ main يشوفه
     image_url = f"/static/missing_persons/{unique_filename}"
 
     new_person = MissingPerson(
@@ -58,7 +54,7 @@ async def report_missing_person(
         medical_notes=medical_notes,
         location=last_known_location,
         image_url=image_url,
-        reported_by=int(user_id) # نضمن إنه Integer
+        reported_by=int(user_id)
     )
 
     db.add(new_person)
@@ -66,19 +62,18 @@ async def report_missing_person(
     db.refresh(new_person)
     return {"message": "تم تسجيل البلاغ بنجاح", "person_id": new_person.person_id}
 
-# --- 3. جلب بلاغاتي ---
-@router.get("/my-reports/{user_id}")
+# --- 3. جلب بلاغات المستخدم (ID مبعوث في الـ Header) ---
+@router.get("/my-reports") # اللينك بقى نضيف مفيش فيه أرقام
 def get_my_reports(
-    user_id: int, 
+    user_id: int = Header(...), # سحب الـ ID من الهيدر
     db: Session = Depends(get_db), 
     current_user: dict = Depends(get_current_user)
 ):
-    # التأكد من الأمان (تحويل الطرفين لـ int لضمان المقارنة)
+    # التحقق من الأمان
     if int(user_id) != int(current_user["user_id"]):
-        raise HTTPException(status_code=403, detail="ID لا يطابق صاحب التوكن")
+        raise HTTPException(status_code=403, detail="ID المستخدم لا يطابق صاحب التوكن")
 
-    # فلترة مباشرة من الداتابيز (أسرع وأدق)
     reports = db.query(MissingPerson).filter(MissingPerson.reported_by == int(user_id)).all()
     
-    print(f"🔍 User {user_id} requested their reports. Found: {len(reports)}")
+    print(f"🔍 User {user_id} requested their reports via Header. Found: {len(reports)}")
     return reports

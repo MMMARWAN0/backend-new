@@ -6,7 +6,7 @@ import threading
 import numpy as np
 from deepface import DeepFace
 
-# الإعدادات
+
 BASE_URL = "http://127.0.0.1:8000"
 API_MATCH_URL = f"{BASE_URL}/detections/match"
 API_MISSING_URL = f"{BASE_URL}/missing-persons/all"
@@ -46,13 +46,13 @@ def load_known_faces():
             if local_image_path:
                 print(f"✅ لقيت صورة: {person['name']}")
                 try:
-                    # نستخدم VGG-Face مع الـ Alignment لزيادة الدقة
+                   
                     embedding_objs = DeepFace.represent(
                         img_path=local_image_path, 
                         model_name="VGG-Face",
                         enforce_detection=False,
                         detector_backend="opencv",
-                        align=True # دي بتخلي الـ VGG يسنتر الوش صح
+                        align=True 
                     )
                     embedding = embedding_objs[0]["embedding"]
                     known_faces_data.append({
@@ -74,13 +74,13 @@ def analyze_face(frame_to_analyze):
         return
 
     try:
-        # استخدام VGG-Face للتحليل
+       
         current_face_objs = DeepFace.represent(
             img_path=frame_to_analyze, 
             model_name="VGG-Face",
             enforce_detection=False, 
             detector_backend="opencv",
-            align=True # مهمة جداً عشان الدقة ترفع عن 60%
+            align=True 
         )
         current_embedding = current_face_objs[0]["embedding"]
         
@@ -94,7 +94,7 @@ def analyze_face(frame_to_analyze):
             dist = 1 - (np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
             confidence = (1 - dist) * 100
 
-            # عتبة القبول: 0.55 مناسبة جداً للـ VGG
+    
             if dist < 0.55 and dist < min_dist:
                 min_dist = dist
                 best_match = person_data.copy()
@@ -108,7 +108,7 @@ def analyze_face(frame_to_analyze):
         
     is_analyzing = False
 
-# تشغيل الكاميرا
+
 cap = cv2.VideoCapture(RTSP_URL) 
 load_known_faces()
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
@@ -126,10 +126,10 @@ while True:
 
     for (x, y, w, h) in faces:
         if matched_person:
-            color = (0, 255, 0) # أخضر
+            color = (0, 255, 0) 
             label = f"{matched_person['name']} {matched_person['confidence']}%"
         else:
-            color = (0, 0, 255) # أحمر
+            color = (0, 0, 255) 
             label = "Searching..."
 
         cv2.rectangle(display_frame, (x, y), (x+w, y+h), color, 2)
@@ -140,7 +140,7 @@ while True:
         is_analyzing = True
         threading.Thread(target=analyze_face, args=(display_frame.copy(),)).start()
 
-    # إرسال البلاغ للسيرفر لو الثقة أعلى من 70%
+    
     if matched_person and matched_person['confidence'] > 70:
         current_time = time.time()
         if current_time - last_send_time > 30: 
