@@ -11,7 +11,7 @@ from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/detections", tags=["AI Detections"])
 
-# --- 1. تسجيل حالة تطابق من الـ AI ---
+
 @router.post("/match")
 def register_ai_detection(
     person_id: int = Form(...), 
@@ -21,7 +21,7 @@ def register_ai_detection(
     image: UploadFile = File(...), 
     db: Session = Depends(get_db)
 ):
-    # نستخدم os.getcwd() عشان نضمن إن الصور بتتحفظ جوه مشروع الـ backend
+
     base_dir = os.getcwd()
     upload_dir = os.path.join(base_dir, "backend", "uploads", "detections")
     
@@ -60,22 +60,21 @@ def register_ai_detection(
         raise HTTPException(status_code=500, detail=f"Database Error: {str(e)}")
 
 
-# --- 2. جلب الإشعارات للمستخدم (عن طريق الهيدر) ---
-@router.get("/notifications") # شيلنا الـ {user_id} من هنا
+
+@router.get("/notifications") 
 def get_user_notifications(
-    user_id: int = Header(...), # سحب الـ ID من الهيدر (Interceptor)
+    user_id: int = Header(...), 
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user) 
 ):
    
-    # التحقق من الأمان: الـ ID في الهيدر لازم يطابق الـ ID في التوكن
     if int(user_id) != int(current_user["user_id"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="غير مسموح لك بالوصول لإشعارات مستخدم آخر!"
         )
 
-    # جلب الإشعارات الخاصة بالمفقودين اللي اليوزر ده هو اللي بلغ عنهم
+  
     notifications = db.query(Detection, MissingPerson.name)\
         .join(MissingPerson, Detection.person_id == MissingPerson.person_id)\
         .filter(MissingPerson.reported_by == int(user_id))\
@@ -88,7 +87,7 @@ def get_user_notifications(
             "detection_id": det.detection_id,
             "person_id": det.person_id,
             "person_name": person_name, 
-            "confidence_level": round(det.confidence_level * 100, 2), # عرضها كنسبة مئوية
+            "confidence_level": round(det.confidence_level * 100, 2), 
             "location": det.location, 
             "detected_image_url": det.detected_image_url, 
             "detected_at": det.detected_at 

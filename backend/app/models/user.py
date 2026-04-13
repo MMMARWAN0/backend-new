@@ -14,7 +14,9 @@ class User(Base):
     national_id = Column(String(20), unique=True, nullable=True)
     age = Column(Integer, nullable=True)
     
-    selfie_url = Column(String(255), nullable=True)
+  
+    profile_image_url = Column(String(255), nullable=True) 
     id_front_url = Column(String(255), nullable=True)
     id_back_url = Column(String(255), nullable=True)
+    
     is_verified = Column(Boolean, default=False)

@@ -11,7 +11,6 @@ class MissingPerson(Base):
     gender = Column(String(20))
     location = Column(String(255)) 
     medical_notes = Column(Text, nullable=True)
-    last_seen = Column(String(100), nullable=True)
     image_url = Column(String(255), nullable=True)
     status = Column(String(50), default="Active")
     date_reported = Column(DateTime, default=datetime.utcnow)

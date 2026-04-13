@@ -9,7 +9,7 @@ import shutil
 
 router = APIRouter(prefix="/missing-persons", tags=["Missing Persons"])
 
-# --- 1. جلب كل المفقودين (لـ سكريبت الـ AI) ---
+
 @router.get("/all")
 def get_all_missing_persons(db: Session = Depends(get_db)):
     try:
@@ -18,23 +18,23 @@ def get_all_missing_persons(db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database Error: {str(e)}")
 
-# --- 2. رفع بلاغ جديد (ID مبعوث في الـ Header) ---
-@router.post("/report") # شيلنا الـ {user_id} من اللينك
+
+@router.post("/report") 
 async def report_missing_person(
     name: str = Form(...),
     age: int = Form(...),
     medical_notes: str = Form(None), 
     last_known_location: str = Form(...),
     image: UploadFile = File(...),
-    user_id: int = Header(...), # سحب الـ ID من الهيدر (أنس هيبعته في الـ Interceptor)
+    user_id: int = Header(...), 
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    # التأكد من هوية المستخدم للأمان
+    
     if int(user_id) != int(current_user["user_id"]):
         raise HTTPException(status_code=403, detail="ID المستخدم لا يطابق صاحب التوكن")
 
-    # مسار الحفظ
+   
     base_upload_dir = os.path.join(os.getcwd(), "backend", "uploads", "missing_persons")
     if not os.path.exists(base_upload_dir):
         os.makedirs(base_upload_dir, exist_ok=True)
@@ -62,14 +62,14 @@ async def report_missing_person(
     db.refresh(new_person)
     return {"message": "تم تسجيل البلاغ بنجاح", "person_id": new_person.person_id}
 
-# --- 3. جلب بلاغات المستخدم (ID مبعوث في الـ Header) ---
-@router.get("/my-reports") # اللينك بقى نضيف مفيش فيه أرقام
+
+@router.get("/my-reports") 
 def get_my_reports(
-    user_id: int = Header(...), # سحب الـ ID من الهيدر
+    user_id: int = Header(...), 
     db: Session = Depends(get_db), 
     current_user: dict = Depends(get_current_user)
 ):
-    # التحقق من الأمان
+   
     if int(user_id) != int(current_user["user_id"]):
         raise HTTPException(status_code=403, detail="ID المستخدم لا يطابق صاحب التوكن")
 

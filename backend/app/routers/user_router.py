@@ -1,9 +1,12 @@
+import os
+import shutil
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Header, File, UploadFile, Form
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
-from jose import JWTError, jwt
+from jose import jwt
 from app.database import get_db
 from app.models.user import User
 import bcrypt
@@ -126,7 +129,7 @@ async def register_user(
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
-        return {"message": "تم التسجيل بنجاح مع كافة الصور", "user_id": new_user.user_id}
+        return {"message": "تم التسجيل بنجاح  ", "user_id": new_user.user_id}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database Error: {str(e)}")
