@@ -15,7 +15,7 @@ from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/users", tags=["Users Authentication"])
 
-
+# ... (نفس الـ Classes بتاعت الـ Request والـ Response بدون تغيير) ...
 class UserUpdateRequest(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
@@ -32,7 +32,6 @@ class UserResponse(BaseModel):
     role: str
     profile_image_url: Optional[str] = None  
     
-
     class Config:
         from_attributes = True
 
@@ -47,7 +46,6 @@ class UserRegisterRequest(BaseModel):
     phone: str
     national_id: str
     age: int
-
 
 def get_password_hash(password: str):
     pwd_bytes = password.encode('utf-8')
@@ -65,8 +63,6 @@ def create_access_token(data: dict):
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-
 
 @router.post("/register")
 async def register_user(
@@ -89,15 +85,13 @@ async def register_user(
     if existing_user:
         raise HTTPException(status_code=400, detail="المستخدم موجود بالفعل!")
 
-   
-    base_dir = os.path.join(os.getcwd(), "backend", "uploads")
+    base_dir = os.path.join(os.getcwd(), "uploads")
     id_dir = os.path.join(base_dir, "national_ids")
     profile_dir = os.path.join(base_dir, "profiles")
     
     os.makedirs(id_dir, exist_ok=True)
     os.makedirs(profile_dir, exist_ok=True)
 
-  
     front_filename = f"{national_id}_front.{id_front.filename.split('.')[-1]}"
     with open(os.path.join(id_dir, front_filename), "wb") as buffer:
         shutil.copyfileobj(id_front.file, buffer)
@@ -106,13 +100,12 @@ async def register_user(
     with open(os.path.join(id_dir, back_filename), "wb") as buffer:
         shutil.copyfileobj(id_back.file, buffer)
 
-  
     profile_ext = profile_image.filename.split(".")[-1]
     profile_filename = f"{national_id}_profile_{uuid.uuid4().hex[:6]}.{profile_ext}"
     with open(os.path.join(profile_dir, profile_filename), "wb") as buffer:
         shutil.copyfileobj(profile_image.file, buffer)
 
-   
+  
     new_user = User(
         name=name,
         email=email,
@@ -120,19 +113,10 @@ async def register_user(
         phone=phone,
         national_id=national_id,
         age=age,
-        id_front_url=f"/static/national_ids/{front_filename}",
-        id_back_url=f"/static/national_ids/{back_filename}",
-        profile_image_url=f"/static/profiles/{profile_filename}" 
+        id_front_url=f"static/national_ids/{front_filename}",
+        id_back_url=f"static/national_ids/{back_filename}",
+        profile_image_url=f"static/profiles/{profile_filename}" 
     )
-    
-    try:
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
-        return {"message": "تم التسجيل بنجاح  ", "user_id": new_user.user_id}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database Error: {str(e)}")
     
     try:
         db.add(new_user)
@@ -150,7 +134,6 @@ def login_user(login_data: UserLoginRequest, db: Session = Depends(get_db)):
     if not user or not verify_password(login_data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="بيانات الدخول غير صحيحة")
     
-    
     access_token = create_access_token(data={"sub": str(user.user_id), "name": user.name})
     
     return {
@@ -158,7 +141,6 @@ def login_user(login_data: UserLoginRequest, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "user_id": user.user_id 
     }
-
 
 @router.get("/me", response_model=UserResponse)
 def get_my_profile(
@@ -197,7 +179,6 @@ def update_user_profile(
     db.commit()
     db.refresh(user)
     return user
-
 
 @router.delete("/delete")
 def delete_my_account(

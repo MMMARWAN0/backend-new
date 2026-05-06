@@ -8,10 +8,14 @@ import uuid
 import shutil
 from enum import Enum
 
-
 class GenderEnum(str, Enum):
     male = "ذكر"
     female = "أنثى"
+
+class StatusEnum(str, Enum):
+    searching = "قيد البحث"
+    found = "تم العثور عليه"
+    closed = "مغلق"
 
 router = APIRouter(prefix="/missing-persons", tags=["Missing Persons"])
 
@@ -40,10 +44,9 @@ async def report_missing_person(
     if int(user_id) != int(current_user["user_id"]):
         raise HTTPException(status_code=403, detail="Unauthorized user ID")
 
-   
-    base_upload_dir = os.path.join(os.getcwd(), "backend", "uploads", "missing_persons")
-    if not os.path.exists(base_upload_dir):
-        os.makedirs(base_upload_dir, exist_ok=True)
+ 
+    base_upload_dir = os.path.join(os.getcwd(), "uploads", "missing_persons")
+    os.makedirs(base_upload_dir, exist_ok=True)
 
     file_ext = image.filename.split(".")[-1]
     unique_filename = f"{uuid.uuid4()}.{file_ext}"
@@ -52,10 +55,9 @@ async def report_missing_person(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(image.file, buffer)
 
-    
-    image_url = f"/static/missing_persons/{unique_filename}"
+  
+    image_url = f"static/missing_persons/{unique_filename}"
 
-    
     new_person = MissingPerson(
         name=name,
         age=age,
@@ -64,7 +66,8 @@ async def report_missing_person(
         medical_notes=medical_notes,
         location=last_known_location,
         image_url=image_url,
-        reported_by=int(user_id)
+        reported_by=int(user_id),
+        status=StatusEnum.searching.value  
     )
 
     db.add(new_person)
@@ -83,3 +86,4 @@ def get_my_reports(
 
     reports = db.query(MissingPerson).filter(MissingPerson.reported_by == int(user_id)).all()
     return reports
+    

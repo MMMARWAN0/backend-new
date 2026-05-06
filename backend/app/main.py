@@ -13,14 +13,16 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Missing Person Detection System")
 
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__)) 
 PROJECT_DIR = os.path.dirname(BASE_DIR) 
 UPLOADS_DIR = os.path.join(PROJECT_DIR, "uploads")
-os.makedirs(UPLOADS_DIR, exist_ok=True)
+
+
+os.makedirs(os.path.join(UPLOADS_DIR, "profiles"), exist_ok=True)
+os.makedirs(os.path.join(UPLOADS_DIR, "missing_persons"), exist_ok=True)
+os.makedirs(os.path.join(UPLOADS_DIR, "national_ids"), exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=UPLOADS_DIR), name="static")
-
 
 app.include_router(user_router.router)
 app.include_router(missing_person_router.router)

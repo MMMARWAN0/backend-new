@@ -1,6 +1,13 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from app.database import Base
 from datetime import datetime
+from enum import Enum
+
+
+class StatusEnum(str, Enum):
+    searching = "قيد البحث"
+    found = "تم العثور عليه"
+    closed = "مغلق"
 
 class MissingPerson(Base):
     __tablename__ = "missing_persons"
@@ -14,5 +21,8 @@ class MissingPerson(Base):
     location = Column(String(255), nullable=False)   
     image_url = Column(String(255), nullable=False)
     reported_by = Column(Integer, ForeignKey("users.user_id"))
+    
+    
+    status = Column(String, default=StatusEnum.searching.value)
     
     created_at = Column(DateTime, default=datetime.utcnow)

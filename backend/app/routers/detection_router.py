@@ -6,7 +6,7 @@ from app.models.missing_person import MissingPerson
 import shutil
 import uuid
 import os
-
+from app.models.missing_person import StatusEnum, MissingPerson
 from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/detections", tags=["AI Detections"])
@@ -94,3 +94,16 @@ def get_user_notifications(
         })
         
     return result
+    
+@router.patch("/{person_id}/update-status-auto")
+def update_status_from_cctv(person_id: int, db: Session = Depends(get_db)):
+    
+    person = db.query(MissingPerson).filter(MissingPerson.person_id == person_id).first()
+    
+    if not person:
+        raise HTTPException(status_code=404, detail="الشخص غير موجود")
+        
+    person.status = StatusEnum.found.value
+    db.commit()
+    
+    return {"message": "تم تحديث حالة البلاغ بنجاح "}
