@@ -98,7 +98,7 @@ async def search_by_image(
         shutil.copyfileobj(image.file, buffer)
 
     try:
-      
+        # 1. تحليل الصورة المرفوعة لاستخراج البصمة الوجهية
         current_face_objs = DeepFace.represent(
             img_path=temp_path, 
             model_name="VGG-Face",
@@ -110,36 +110,50 @@ async def search_by_image(
 
         all_persons = db.query(MissingPerson).all()
         matches = []
+        
+        # المسار الأساسي للمشروع
+        base_dir = os.getcwd()
 
         for person in all_persons:
+            # استخراج اسم الملف من الرابط المخزن في الداتابيز
             image_filename = os.path.basename(person.image_url)
-            local_path = os.path.join("uploads", "missing_persons", image_filename)
+            # بناء المسار المحلي للصورة لمقارنتها
+            local_path = os.path.join(base_dir, "uploads", "missing_persons", image_filename)
 
             if os.path.exists(local_path):
-                stored_face_objs = DeepFace.represent(
-                    img_path=local_path, 
-                    model_name="VGG-Face",
-                    enforce_detection=False
-                )
-                stored_embedding = np.array(stored_face_objs[0]["embedding"])
+                try:
+                    stored_face_objs = DeepFace.represent(
+                        img_path=local_path, 
+                        model_name="VGG-Face",
+                        enforce_detection=False
+                    )
+                    stored_embedding = np.array(stored_face_objs[0]["embedding"])
 
-               
-                dist = 1 - (np.dot(current_embedding, stored_embedding) / 
-                           (np.linalg.norm(current_embedding) * np.linalg.norm(stored_embedding)))
-                
-                confidence = round((1 - dist) * 100, 2)
+                    # حساب الـ Cosine Similarity (نفس الـ Logic بتاعك)
+                    dist = 1 - (np.dot(current_embedding, stored_embedding) / 
+                               (np.linalg.norm(current_embedding) * np.linalg.norm(stored_embedding)))
+                    
+                    confidence = round((1 - dist) * 100, 2)
 
-                if confidence > 65:  
-                    matches.append({
-                        "person": person,
-                        "match_percentage": confidence,
-                        "reported_location": location, 
-                        "user_notes": notes            
-                    })
+                    # عتبة الثقة 35% لضمان ظهور نتائج محتملة
+                    if confidence > 35:  
+                        matches.append({
+                            "person": person,
+                            "match_percentage": confidence,
+                            "reported_location": location, 
+                            "user_notes": notes            
+                        })
+                except Exception as e:
+                    print(f"❌ خطأ في معالجة الصورة {image_filename}: {e}")
+                    continue
+            else:
+                print(f"⚠️ الصورة غير موجودة في المسار: {local_path}")
 
-        matches = sorted(matches, key=lambda x: x["match_percentage"], reverse=True)
+        # ترتيب النتائج وناخد أعلى 5
+        matches = sorted(matches, key=lambda x: x["match_percentage"], reverse=True)[:5]
 
-      
+        if not matches:
+            return {"message": "لم يتم العثور على أي شخص يشبه هذه الصورة في قاعدة البيانات", "matches": []}
 
         return {"matches": matches}
 
