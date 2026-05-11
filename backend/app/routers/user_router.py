@@ -122,7 +122,7 @@ async def register_user(
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
-        return {"message": "تم التسجيل بنجاح مع صور البطاقة", "user_id": new_user.user_id}
+        return {"message": "تم التسجيل بنجاح ", "user_id": new_user.user_id}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"خطأ في حفظ البيانات: {str(e)}")

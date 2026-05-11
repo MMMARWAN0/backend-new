@@ -10,3 +10,5 @@ class SoSRequest(Base):
     location = Column(String(255), nullable=False)
     requested_at = Column(DateTime, default=datetime.now) 
     status_sos = Column(String(50), default="Open") 
+    latitude = Column(Float, nullable=False)  
+    longitude = Column(Float, nullable=False) 

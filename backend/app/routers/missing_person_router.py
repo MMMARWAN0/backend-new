@@ -7,6 +7,8 @@ import os
 import uuid
 import shutil
 from enum import Enum
+import numpy as np
+from deepface import DeepFace
 
 class GenderEnum(str, Enum):
     male = "ذكر"
@@ -40,11 +42,9 @@ async def report_missing_person(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-
     if int(user_id) != int(current_user["user_id"]):
         raise HTTPException(status_code=403, detail="Unauthorized user ID")
 
- 
     base_upload_dir = os.path.join(os.getcwd(), "uploads", "missing_persons")
     os.makedirs(base_upload_dir, exist_ok=True)
 
@@ -55,7 +55,6 @@ async def report_missing_person(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(image.file, buffer)
 
-  
     image_url = f"static/missing_persons/{unique_filename}"
 
     new_person = MissingPerson(
@@ -86,4 +85,64 @@ def get_my_reports(
 
     reports = db.query(MissingPerson).filter(MissingPerson.reported_by == int(user_id)).all()
     return reports
-    
+
+@router.post("/search-by-image")
+async def search_by_image(
+    location: str = Form(...),          
+    notes: str = Form(None),          
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    temp_path = f"temp_search_{uuid.uuid4()}.jpg"
+    with open(temp_path, "wb") as buffer:
+        shutil.copyfileobj(image.file, buffer)
+
+    try:
+      
+        current_face_objs = DeepFace.represent(
+            img_path=temp_path, 
+            model_name="VGG-Face",
+            enforce_detection=False, 
+            detector_backend="opencv",
+            align=True 
+        )
+        current_embedding = np.array(current_face_objs[0]["embedding"])
+
+        all_persons = db.query(MissingPerson).all()
+        matches = []
+
+        for person in all_persons:
+            image_filename = os.path.basename(person.image_url)
+            local_path = os.path.join("uploads", "missing_persons", image_filename)
+
+            if os.path.exists(local_path):
+                stored_face_objs = DeepFace.represent(
+                    img_path=local_path, 
+                    model_name="VGG-Face",
+                    enforce_detection=False
+                )
+                stored_embedding = np.array(stored_face_objs[0]["embedding"])
+
+               
+                dist = 1 - (np.dot(current_embedding, stored_embedding) / 
+                           (np.linalg.norm(current_embedding) * np.linalg.norm(stored_embedding)))
+                
+                confidence = round((1 - dist) * 100, 2)
+
+                if confidence > 65:  
+                    matches.append({
+                        "person": person,
+                        "match_percentage": confidence,
+                        "reported_location": location, 
+                        "user_notes": notes            
+                    })
+
+        matches = sorted(matches, key=lambda x: x["match_percentage"], reverse=True)
+
+      
+
+        return {"matches": matches}
+
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
