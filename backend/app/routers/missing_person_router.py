@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Header
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 from app.database import get_db
 from app.models.missing_person import MissingPerson
 from app.dependencies import get_current_user
@@ -18,6 +19,10 @@ class StatusEnum(str, Enum):
     searching = "قيد البحث"
     found = "تم العثور عليه"
     closed = "مغلق"
+
+
+class UpdateStatusRequest(BaseModel):
+    status: StatusEnum
 
 router = APIRouter(prefix="/missing-persons", tags=["Missing Persons"])
 
@@ -98,7 +103,6 @@ async def search_by_image(
         shutil.copyfileobj(image.file, buffer)
 
     try:
-        # 1. تحليل الصورة المرفوعة لاستخراج البصمة الوجهية
         current_face_objs = DeepFace.represent(
             img_path=temp_path, 
             model_name="VGG-Face",
@@ -111,13 +115,10 @@ async def search_by_image(
         all_persons = db.query(MissingPerson).all()
         matches = []
         
-        # المسار الأساسي للمشروع
         base_dir = os.getcwd()
 
         for person in all_persons:
-            # استخراج اسم الملف من الرابط المخزن في الداتابيز
             image_filename = os.path.basename(person.image_url)
-            # بناء المسار المحلي للصورة لمقارنتها
             local_path = os.path.join(base_dir, "uploads", "missing_persons", image_filename)
 
             if os.path.exists(local_path):
@@ -128,14 +129,12 @@ async def search_by_image(
                         enforce_detection=False
                     )
                     stored_embedding = np.array(stored_face_objs[0]["embedding"])
-
-                    # حساب الـ Cosine Similarity (نفس الـ Logic بتاعك)
+                    
                     dist = 1 - (np.dot(current_embedding, stored_embedding) / 
                                (np.linalg.norm(current_embedding) * np.linalg.norm(stored_embedding)))
                     
                     confidence = round((1 - dist) * 100, 2)
-
-                    # عتبة الثقة 35% لضمان ظهور نتائج محتملة
+                   
                     if confidence > 35:  
                         matches.append({
                             "person": person,
@@ -149,7 +148,6 @@ async def search_by_image(
             else:
                 print(f"⚠️ الصورة غير موجودة في المسار: {local_path}")
 
-        # ترتيب النتائج وناخد أعلى 5
         matches = sorted(matches, key=lambda x: x["match_percentage"], reverse=True)[:5]
 
         if not matches:
@@ -160,3 +158,22 @@ async def search_by_image(
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
+
+
+@router.patch("/{person_id}/update-status")
+def update_person_status(
+    person_id: int,
+    request: UpdateStatusRequest, 
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    person = db.query(MissingPerson).filter(MissingPerson.person_id == person_id).first()
+    
+    if not person:
+        raise HTTPException(status_code=404, detail="هذا البلاغ غير موجود")
+        
+    person.status = request.status.value
+    db.commit()
+    db.refresh(person)
+    
+    return {"message": "تم تحديث حالة البلاغ بنجاح", "new_status": person.status}

@@ -6,7 +6,6 @@ from app.models.missing_person import MissingPerson
 import shutil
 import uuid
 import os
-from app.models.missing_person import StatusEnum, MissingPerson
 from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/detections", tags=["AI Detections"])
@@ -21,9 +20,9 @@ def register_ai_detection(
     image: UploadFile = File(...), 
     db: Session = Depends(get_db)
 ):
-
+    
     base_dir = os.getcwd()
-    upload_dir = os.path.join(base_dir, "backend", "uploads", "detections")
+    upload_dir = os.path.join(base_dir, "uploads", "detections")
     
     if not os.path.exists(upload_dir):
         os.makedirs(upload_dir, exist_ok=True)
@@ -35,7 +34,7 @@ def register_ai_detection(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(image.file, buffer)
         
-    image_url = f"/static/detections/{unique_filename}"
+    image_url = f"static/detections/{unique_filename}"
 
     new_detection = Detection(
         person_id=int(person_id),
@@ -60,21 +59,18 @@ def register_ai_detection(
         raise HTTPException(status_code=500, detail=f"Database Error: {str(e)}")
 
 
-
 @router.get("/notifications") 
 def get_user_notifications(
     user_id: int = Header(...), 
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user) 
 ):
-   
     if int(user_id) != int(current_user["user_id"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="غير مسموح لك بالوصول لإشعارات مستخدم آخر!"
         )
 
-  
     notifications = db.query(Detection, MissingPerson.name)\
         .join(MissingPerson, Detection.person_id == MissingPerson.person_id)\
         .filter(MissingPerson.reported_by == int(user_id))\
@@ -94,7 +90,8 @@ def get_user_notifications(
         })
         
     return result
-    
+
+
 @router.patch("/{person_id}/update-status-auto")
 def update_status_from_cctv(person_id: int, db: Session = Depends(get_db)):
     
@@ -103,7 +100,10 @@ def update_status_from_cctv(person_id: int, db: Session = Depends(get_db)):
     if not person:
         raise HTTPException(status_code=404, detail="الشخص غير موجود")
         
-    person.status = StatusEnum.found.value
-    db.commit()
     
-    return {"message": "تم تحديث حالة البلاغ بنجاح "}
+    person.status = "تم العثور عليه" 
+    
+    db.commit()
+    db.refresh(person)
+    
+    return {"message": "تم تحديث حالة البلاغ تلقائياً إلى تم العثور عليه", "current_status": person.status}
