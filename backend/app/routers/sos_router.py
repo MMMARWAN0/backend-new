@@ -19,7 +19,7 @@ class SOSRequestResponse(BaseModel):
     user_id: int
     latitude: float
     longitude: float
-    location_name: str
+    location: str          
     requested_at: datetime
     status_sos: str 
     google_maps_url: str = None
@@ -38,7 +38,6 @@ async def send_sos_signal(
     if int(current_user["user_id"]) != int(user_id):
         raise HTTPException(status_code=403, detail="لا يمكنك إرسال استغاثة بهوية شخص آخر")
 
-  
     new_sos = models.sos_request.SoSRequest(
         user_id=int(user_id), 
         latitude=request.latitude,
@@ -51,7 +50,6 @@ async def send_sos_signal(
     db.commit()
     db.refresh(new_sos)
 
-    
     new_sos.google_maps_url = f"https://www.google.com/maps?q={request.latitude},{request.longitude}"
     
     return new_sos
@@ -69,7 +67,7 @@ def get_my_sos_history(
         models.sos_request.SoSRequest.user_id == int(user_id)
     ).all()
 
-    # إضافة لينكات الخرائط لكل التاريخ القديم في الرد
+   
     for alert in alerts:
         alert.google_maps_url = f"https://www.google.com/maps?q={alert.latitude},{alert.longitude}"
     
